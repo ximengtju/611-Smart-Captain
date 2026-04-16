@@ -1,157 +1,275 @@
-# 611-Smart-Captain
-本仓库用于共享维护 611智慧船长项目 相关代码。
-## 📖 项目简介
+# 🚢 611-Smart-Captain
 
-本项目是一个基于 ****HoloOcean**** 构建的水下机器人强化学习（RL）与大语言模型（LLM）多任务协同控制环境。  
-项目将底层基于 Gym 的水下仿真环境与上层大模型自然语言指令相结合，实现了****任务分解****、****多强化学习 Agent 串行调用****以及****多任务（导航、避障等）融合****的综合性控制框架。
+> LLM + RL 分层智能控制框架，面向水下无人潜航器（AUV）自主任务执行
 
-  
+611-Smart-Captain 是一个分层协同控制系统，支持通过自然语言下达高层任务指令，由系统自动完成任务理解、分解、编排与执行，并在 HoloOcean 仿真环境中进行训练与验证。
 
-## 🏗️ 核心目录结构与说明
+核心思路是 **"LLM 当船长🧠，RL 当舵手🎮"**：
 
-```python
-Main-Framework/  
-├── env/                     - 🌍 基础环境与配置模块  
-├── task/                    - 🎯 强化学习子任务模块  
-├── llm/                     - 🧠 大模型控制与任务分解模块  
-├── stablebaselines3/        - 🛠️ RL 基础算法库  
-├── MPC/                     - 🛤️ 路径跟踪模块  
-└── main.py                  - 🚀 项目全局主入口  
-│  
-HoloOcean-2.3.0/BaseEnv/  
-├── 🎯 仿真环境  
-├── 📁 Env_Task1/ - 基础导航训练  
-├── 📁 Env_Task2/ - 传感器测试  
-├── 📁 Env_Task3/ - 大坝场景  
-├── 📁 Env_Task4/ - 开阔水域避障  
-└── 📁 LLM_Task/ - 大模型控制接口
+- **LLM（大语言模型）** 负责"想"——理解自然语言指令，将任务拆解为结构化子任务序列
+- **RL（强化学习）** 负责"做"——将子目标转化为推进器推力、舵角等底层控制指令
+- **Orchestration（编排层）** 负责"调度"——在技能间切换、管理传感器模式、推进任务状态
+
+## 🏗️ 系统架构
+
+系统分为四层：
+
+```
+自然语言指令
+    ↓
+🧠 LLM 层 ─── 意图解析、任务分解、情境理解
+    ↓
+🧭 编排层 ─── 技能切换、传感器切换、执行状态管理
+    ↓
+🎮 RL 层 ──── 推进器控制、舵角控制、路径执行
+    ↓
+🌊 仿真层 ─── HoloOcean 水下物理仿真、传感器模拟
+    ↓
+📡 环境反馈 → 回传至编排层与 LLM 层
 ```
 
-### 🌍 /env 文件夹：基础环境与接口
+**🧠 LLM 任务理解层** — 接收自然语言指令（如"前往目标海域，途中避障，搜索可疑目标，切换声呐精细测绘"），完成意图解析、任务分解（导航 → 避障 → 搜索 → 传感器切换 → 测绘）和情境理解（如将声呐图像中的模糊形状关联到"可能的沉船"）。
 
-本模块负责底层仿真环境的封装与强化学习控制器的调度。
+**🧭 Orchestration 编排层** — 将结构化子任务编排为可执行流程，在导航/避障/搜索/跟踪/测绘等技能之间切换，管理场景与传感器模式，跟踪执行状态与依赖关系。
 
--   📄 ****pierharbor\_hovering.py****: 基础环境，继承自标准 gym.Env 类，加载 PierHarbor 场景，具备基本的导航功能。
--   📄 ****env\_config.py****: 环境配置，****\[待拓展\]**** 后续若需添加新的强化学习子任务，只需将子任务的类直接写入 REGISTRATION\_DICT 字典下即可完成注册。
-    
-    ```python
-    # 注册格式示例：  
-    REGISTRATION\_DICT = {  
-        "task1-v0": "task.task1:Navigation"  
-    }
-    ```
--   📄 ****rl\_config.py****: 强化学习算法的超参数配置文件。
--   📄 ****trainer.py****: 强化学习训练器。
--   📄 ****agents.py****: 强化学习端的调用接口。****\[重点\]**** 该接口支持部署多个 agent\_model 并进行串行（依次）调用。
-    
-    > ⚠️ ****注意****：部署的所有 agent\_model 输出的 action\_space 维度必须保持严格一致！
-    
+**🎮 RL 执行层** — 强化学习智能体将子目标转化为底层控制指令，处理复杂非线性水下动力学，优化能耗与任务完成时间，在噪声与不确定环境下保持稳定执行。
 
-### 🎯 /task 文件夹：子任务实现
+**🌊 仿真层** — 基于 [HoloOcean](https://holoocean.readthedocs.io/) 提供水下场景仿真、AUV 运行时、传感器观测与训练评估环境。
 
-定义了具体的强化学习任务，针对不同任务对传感器（如降维雷达 ImagingSonar、RGBCamera 等）数据进行了特定处理。
+> **技能（Skill）**：指一个可被编排层调度、由 RL 层执行的任务模块，例如 `navigation`、`obstacle_avoidance`、`search`、`mapping`。通常对应一个技能环境、一个策略入口，以及该任务相关的观测/奖励逻辑。
 
--   📄 ****task1.py (导航任务)****: 基础导航任务环境配置。此处的雷达射线处理方式与 BaseEnv 保持一致，进行了****降采样处理****。
--   📄 ****task2.py (避障任务)****: 避障导航任务环境配置。为了保留障碍物细节，此处的雷达射线在****水平方向上不进行降采样****。
--   📄 ****task\_combine1.py (多任务环境)****: 综合调度，可以实现不同任务的切换。目前已兼容“导航”和“避障”两大任务，正在尝试融合接入路径跟踪任务。
+## 🧭 当前编排层
 
-### 🧠 /llm 文件夹：大模型控制模块
+当前编排层采用的是一套**线性任务图 + 确定性调度器**架构。
 
-用于接收用户的自然语言指令，并将其转化为机器人可执行的具体动作组合。
+- **输入**：LLM 层输出的结构化子任务列表，每个子任务包含 `skill`、`scenario`、`sensor_mode`、`constraints` 等字段
+- **输出**：当前应激活的技能、场景、传感器模式，以及对应环境类和场景类
+- **执行时机**：
+  - 规划阶段：把结构化任务转成 `TaskGraph`
+  - 推进阶段：根据任务结果把当前子任务从 `pending` 推进到 `active / succeeded / failed`
+- **当前已实现的能力**：
+  - 线性任务图构建
+  - 子任务状态管理
+  - 技能/场景/环境解析
+  - 当前激活任务的选择
+  - 执行上下文维护
 
--   📄 ****Task\_decomposition.py****: 任务分解器。用于扩充自然语言命令，并根据环境状态进行复杂任务的分解。
--   📄 ****Interface.py****: 大模型端接口。将解析结果格式化，输出为 子任务标签 + 子任务描述。
+### `orchestration/` 各文件功能
 
-### 🛠️ /stablebaseline3 文件夹：定制化 RL 库
+- `task_graph.py`
+  定义 `Subtask`、`TaskGraph`、`ExecutionContext`，是编排层的核心数据结构
+- `planner.py`
+  把 LLM 产出的结构化任务 payload 转成可执行的 `TaskGraph`
+- `dispatcher.py`
+  负责激活当前子任务、更新状态、推进到下一个子任务
+- `registry.py`
+  负责把技能名、场景名、传感器名解析到具体实现类
+- `multi_env.py`
+  提供共享 AUV 实例下的多环境适配逻辑，支撑多技能切换
 
--   本目录是本地魔改版的 ****Stable Baselines 3**** 源码库。
--   ****改动说明****：针对本项目多任务切换导致的状态空间变化问题，内部做了部分改动，使得 agents 在观测值 (obs) 的维度出现变化后****仍然不会报错****。
--   🛑 ****强烈建议****：除特殊定制需求外，****个人建议不再对该库的源码进行改动****，以免破坏现有多环境兼容性。
+### 还需要继续完善的部分
 
-### 🛤️ /MPC 文件夹：模型预测控制 (开发中 🚧)
+- 目前只支持**线性任务链**，还不支持分支、并行和 DAG 依赖
+- 还没有实现真正的**重规划**和失败恢复
+- 还没有形成“观察 -> 判断 -> 切换 -> 再观察”的完整 agent 闭环
+- 传感器切换和场景切换目前主要来自任务分解结果，还不是基于实时反馈的动态决策
 
--   当前尚未完善，后续预计将在此处实现专门的****路径跟踪 (Path Tracking)**** 任务模块。
+## 📁 项目结构
 
+### `src/smart_captain/` — 核心代码
 
-
-  
-
-## 🚀 快速开始与全局入口
-
-### 主程序入口 (main.py)
-
-大模型接口、强化学习 Agent 接口、多任务环境 (task\_combine1) 均在此文件中进行实例化和调用。
-
-> ⚠️ ****运行 main.py 的强依赖要求：****
-> 
-> 1.  ****仿真器版本****：必须使用 ****HoloOcean == 2.0.1****。
-> 2.  ****大模型权重****：主文件路径下必须配备一个****已经完成了微调的本地大模型****。
-
-### 运行测试示例
-
-如果您刚接手项目，可以先通过以下方式进行环境验证：
-
-1.  ****测试 LLM + 导航****：直接运行 main.py，默认会调用 LLM 解析指令并调用 Task1 模型执行 PierHarbor 场景中的导航任务。（需确保配置了您的 LLM API 或本地模型路径，Task1 已有半成品模型可直接跑通）。
-2.  ****测试固定任务****：针对固定起点和终点的导航避障任务，模型已存放于对应的 logs 目录，可直接进行评估测试。
-
-## 💡 传感器与场景补充说明
-
-在编写自定义任务时，可以调用 HoloOcean 提供的丰富传感器组件：
-
--   ****常用传感器****：RGBCamera (RGB相机)、ImagingSonar (前视声纳/雷达，支持降采样处理状态)。
--   ****进阶传感器****：针对水下特性的 BSTSensor 等。
--   ****支持场景****：PierHarbor (基础码头)、Dam (大坝)、OpenWater (开阔水域) 等。
-
-
-## 🎯 仿真环境模块 (详情见BaseEnv/readme.md)
-
-4 个 Task 的整体训练框架基本一致，主要区别在于任务环境、场景文件、奖励设计和附加脚本不同。
-
-### 📁 ****Env\_Task1 - 基础导航****
-
-```python
-Env_Task1/  
-├── 🎮 env/ - 环境核心  
-│   ├── pierharbor\_env.py    # 码头场景环境封装  
-│   ├── task1.py             # 导航任务实现：状态、动作、奖励、终止逻辑  
-│   └── trainer.py           # 通用训练器  
-├── 📊 logs1/ - 训练日志  
-├── 🚀 train.py              # 训练入口  
-└── 📈 evaluate.py           # 评估脚本
+```text
+src/smart_captain/
+├── app/                           应用入口
+│   ├── mission_runner.py          统一任务入口，串联规划、编排与执行
+│   ├── main.py                    轻量规划演示入口
+│   ├── compat_runtime.py          兼容运行时
+│   ├── native_runtime.py          原生运行时
+│   └── shared_auv_runtime.py      共享 AUV 运行时
+├── llm/                           任务理解
+│   ├── interface.py               LLM 统一接口
+│   ├── decomposer.py              任务分解器
+│   └── world_model.py             世界模型与能力画像
+├── orchestration/                 任务编排
+│   ├── task_graph.py              子任务、任务图、执行上下文
+│   ├── planner.py                 结构化任务 -> 任务图
+│   ├── dispatcher.py              执行推进与技能切换
+│   ├── registry.py                技能/场景/传感器解析
+│   └── multi_env.py               共享 HoloOcean 实例的多环境适配器
+├── rl/                            强化学习
+│   ├── model_store.py             技能 -> 模型权重注册表
+│   ├── agents.py                  多技能策略运行时
+│   ├── algo_config.py             算法超参数配置
+│   ├── trainer.py                 训练封装
+│   └── evaluator.py               评估封装
+├── simulation/                    仿真环境
+│   ├── defaults.py                默认环境配置
+│   ├── compat.py                  迁移兼容层
+│   ├── registry.py                场景与传感器注册表
+│   ├── core/
+│   │   ├── base_env.py            仿真基础类与奖励数学工具
+│   │   ├── action_mapper.py       RL 动作 -> HoloOcean 控制指令
+│   │   ├── sensor_processor.py    传感器数据预处理
+│   │   └── scenario_manager.py    场景管理器
+│   ├── scenarios/
+│   │   ├── pier_harbor.py         港口码头场景
+│   │   ├── dam.py                 大坝场景
+│   │   └── open_water.py          开阔水域场景
+│   └── sensors/
+│       ├── radar.py               雷达传感器适配器
+│       ├── imaging_sonar.py       成像声呐适配器
+│       ├── rgb_camera.py          RGB 摄像头适配器
+│       └── bst.py                 BST 传感器适配器
+├── skills/                        可执行技能
+│   ├── base.py                    SkillSpec 与 SkillAdapter
+│   ├── registry.py                技能注册表
+│   ├── navigation/
+│   │   ├── config.py              导航技能配置
+│   │   ├── env.py                 导航技能环境
+│   │   ├── policy.py              导航策略封装
+│   │   ├── reward.py              导航奖励函数
+│   │   └── train.py               导航技能训练入口
+│   ├── obstacle_avoidance/
+│   │   ├── config.py              避障技能配置
+│   │   ├── env.py                 避障技能环境
+│   │   ├── policy.py              避障策略封装
+│   │   ├── reward.py              避障奖励函数
+│   │   └── train.py               避障技能训练入口
+│   ├── search/
+│   │   ├── env.py                 搜索技能环境，占位
+│   │   └── policy.py              搜索策略封装，占位
+│   ├── target_tracking/
+│   │   ├── env.py                 目标跟踪技能环境，占位
+│   │   └── policy.py              目标跟踪策略封装，占位
+│   └── mapping/
+│       ├── env.py                 测绘技能环境，占位
+│       └── policy.py              测绘策略封装，占位
+└── utils/                         工具模块
+    ├── paths.py                   路径工具
+    ├── types.py                   类型定义
+    ├── logging.py                 日志工具
+    └── compat_testbeds.py         适配器测试用模拟环境
 ```
 
-### 📁 ****Env\_Task2 - 传感器测试****
+### `src/stable_baselines3/` — 定制版 Stable Baselines3
 
--   ****BSTSensor.py:**** BST传感器测试脚本，需Holocean >=2.2.1
--   ****RGBCamera:**** RGB相机测试脚本，提供视觉感知示例
--   🚧 ****待开发****：ImagingSonar集成
+项目使用的 RL 训练库（基于官方版本定制修改），支持 SAC、PPO、A2C、DDPG、DQN、TD3 等算法。
 
-### 📁 ****Env\_Task3 - 大坝场景****
+### `src/holoocean/` — HoloOcean Python Client
 
--   专为大坝检测设计
--   复杂水下结构环境
--   视觉+雷达混合感知
+[HoloOcean](https://holoocean.readthedocs.io/) 水下仿真引擎的 Python 客户端，负责与仿真引擎通信、管理传感器和智能体。
 
-### 📁 ****Env\_Task4 - 避障导航****
+### 其他顶层目录
 
--   ✅ 已完成：固定起点→终点的避障模型
--   位置：logs1/ 目录
--   可运行：直接调用evaluate.py测试
+| 目录 | 说明 |
+|---|---|
+| `models/rl/` | 已训练的 RL 模型权重（navigation/SAC、obstacle_avoidance/SAC） |
+| `docs/` | 设计文档 |
+| `third_party/holoocean/engine/` | HoloOcean 仿真引擎 C++ 源码 |
 
-### 🤖 ****LLM\_Task - 大模型控制****
+### `scripts/` — 📜 运行脚本
 
--   使用前必须配置：  
-    1\. ✅ 接入大模型API  
-    2\. ✅ 导入训练好的模型路径  
-    3\. ✅ 主路径下有微调好的大模型  
-    4\. ✅ Holocean 2.0.1 环境
+```text
+scripts/
+├── run_mission_runner.py          主入口，支持 plan-only / legacy-preview / execute
+├── run_native_preview.py          预览原生运行时规划结果
+├── run_legacy_compat.py           验证兼容运行链
+├── run_demo.py                    演示脚本
+├── train_skill.py                 技能训练脚本
+├── eval_skill.py                  技能评估脚本
+└── manual_control.py              手动控制 AUV
+```
 
-  
+## 🚀 快速开始
 
-### 🔧 扩展开发指南
+### 环境准备
 
-### 添加新传感器
+```bash
+pip install -r requirements.txt
+```
 
-1.  在对应场景的`*_env.py`中定义传感器
-2.  在`env_config.py`中配置参数
-3.  在任务类中处理传感器数据
+验证环境：
+
+```bash
+python -c "import torch, gymnasium, holoocean, stable_baselines3"
+```
+
+如果希望任务分解优先调用真实 LLM API，而不是本地关键词规则，可以配置 DeepSeek：
+
+```bash
+export SMART_CAPTAIN_LLM_API_URL="https://api.deepseek.com/chat/completions"
+export SMART_CAPTAIN_LLM_API_KEY="你的 DeepSeek API Key"
+export SMART_CAPTAIN_LLM_MODEL="deepseek-chat"
+```
+
+未配置这些环境变量时，框架会继续使用当前内置的规则分解器。
+
+### 运行示例
+
+```bash
+# 预览任务规划结果（不启动仿真）
+PYTHONPATH=src python scripts/run_mission_runner.py --mode plan-only
+
+# 预览运行链绑定
+PYTHONPATH=src python scripts/run_mission_runner.py --mode legacy-preview
+
+# 执行完整任务链（需要仿真环境和模型权重就绪）
+PYTHONPATH=src python scripts/run_mission_runner.py --mode execute
+
+# 自定义任务指令
+PYTHONPATH=src python scripts/run_mission_runner.py \
+  --mode plan-only \
+  --command "请控制水下机器人前往目标区域，途中避障，然后开始搜索可疑目标"
+```
+
+`plan-only` 输出中的 `llm_backend` 字段表示本次任务分解使用的是哪条链路：
+
+- `heuristic`：使用本地关键词规则分解
+- `api`：使用已配置的真实 LLM API，例如 DeepSeek
+
+### 训练与评估
+
+```bash
+PYTHONPATH=src python scripts/train_skill.py
+PYTHONPATH=src python scripts/eval_skill.py
+```
+
+## 🧩 开发指南
+
+### 新增技能
+
+1. 在 `src/smart_captain/skills/` 下新建技能目录：
+
+```
+src/smart_captain/skills/<skill_name>/
+  __init__.py
+  config.py       # 技能配置
+  env.py          # 技能环境
+  policy.py       # 策略入口
+  reward.py       # 奖励函数
+  train.py        # 训练脚本
+```
+
+2. 在 `skills/registry.py` 中注册技能
+3. 在 `rl/model_store.py` 中注册默认模型
+
+### 新增任务类型
+
+修改 `llm/decomposer.py` 中的关键词映射表，并在 `orchestration/planner.py` 中建立技能映射。
+
+### 接入新模型
+
+将模型权重放置到 `models/rl/<skill_name>/<algorithm>/<run_name>/`，并在 `rl/model_store.py` 中注册。
+
+## 🗺️ Roadmap
+
+- [ ] 更多技能：路径跟踪、精细测绘、目标确认、返航、协同搜索
+- [ ] 高级编排：条件分支、失败重规划、任务恢复、动态重排序
+- [ ] 持续情境理解：LLM 结合传感器反馈与世界模型进行实时解释
+- [ ] 统一训练评估接口
+- [ ] 更多场景与多模态传感器配置
+- [ ] 完整 CLI 与实验管理工具
+
+## 📄 License
+
+MIT
