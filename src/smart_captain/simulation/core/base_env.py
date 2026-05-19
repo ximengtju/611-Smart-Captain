@@ -48,9 +48,9 @@ class NavigationState:
 
         diff = self.goal_location - self.position
         delta_d = float(np.linalg.norm(diff))
-        delta_theta = float(
-            self.attitude_rpy[1] + wrap_to_pi(np.arctan2(diff[2], np.linalg.norm(diff[:2])))
-        )
+        horizontal_dist = float(np.linalg.norm(diff[:2]))
+        desired_theta = np.arctan2(diff[2], max(horizontal_dist, 1e-6))
+        delta_theta = float(wrap_to_pi(desired_theta - self.attitude_rpy[1]))
         delta_psi = float(wrap_to_pi(np.arctan2(diff[1], diff[0]) - self.attitude_rpy[2]))
         delta_heading_goal = float(wrap_to_pi(self.goal_heading - self.attitude_rpy[2]))
         stable_delta_theta = float(self.attitude_rpy[1] - self.last_attitude_rpy[1])
@@ -151,10 +151,22 @@ class DoneEvaluator:
         navigation_errors: dict[str, float],
     ) -> tuple[bool, list[int], list[bool]]:
         """Evaluate terminal conditions and return `(done, cond_idx, conditions)`."""
+        navigation = episode_state.navigation
+        z_err = (
+            abs(navigation.goal_location[2] - navigation.position[2])
+            if navigation.goal_location is not None
+            else float("inf")
+        )
+        delta_d_xy = (
+            np.linalg.norm((navigation.goal_location - navigation.position)[:2])
+            if navigation.goal_location is not None
+            else float("inf")
+        )
         conditions = [
-            navigation_errors["delta_d"] < self.config.dist_goal_reached_tol,
+            delta_d_xy < self.config.dist_goal_reached_tol and z_err < getattr(self.config, "z_goal_reached_tol", 2.5),
             navigation_errors["delta_d"] > self.config.max_dist_from_goal,
-            False,
+            abs(navigation.attitude_rpy[0]) > self.config.max_attitude
+            or abs(navigation.attitude_rpy[1]) > self.config.max_attitude,
             episode_state.t_steps >= self.config.max_timesteps,
             episode_state.collision,
         ]

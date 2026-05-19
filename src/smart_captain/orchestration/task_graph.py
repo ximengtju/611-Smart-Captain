@@ -80,3 +80,20 @@ class ExecutionContext:
     active_sensor_mode: str | None = None
     completed_subtasks: list[str] = field(default_factory=list)
     failed_subtasks: list[str] = field(default_factory=list)
+    # Recent environment snapshots are kept at mission scope so a future
+    # replanner can explain where the failure happened, not just which skill
+    # failed.  Records are compact dictionaries rather than raw observations.
+    feedback_history: list[dict[str, Any]] = field(default_factory=list)
+    # Each evaluator writes its latest result here under the subtask id.  This
+    # separates progress judgment from raw shared world facts.
+    progress_by_subtask: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Retry accounting belongs to the mission context because retry policy must
+    # survive multiple dispatcher calls for the same active subtask.
+    retry_counts: dict[str, int] = field(default_factory=dict)
+    # These fields are the handoff point to future replanning.  The first
+    # implementation only marks the request; a later replanner can consume the
+    # graph, world_state, feedback_history, and failed_subtasks together.
+    replan_requested: bool = False
+    replan_reason: str | None = None
+    # Decision records make the closed-loop behavior inspectable after a run.
+    decisions: list[dict[str, Any]] = field(default_factory=list)

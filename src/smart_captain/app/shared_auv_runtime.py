@@ -40,7 +40,7 @@ def create_shared_auv_runtime(
     layout: LegacySharedAUVLayout,
     env_config: dict[str, Any] = DEFAULT_ENV_CONFIG,
     mode: int = 0,
-    show_viewport: bool = True,
+    show_viewport: bool = False,
 ) -> SharedAUVMissionRuntime:
     """Create a shared HoloOcean runtime from the new declarative layout."""
     import holoocean

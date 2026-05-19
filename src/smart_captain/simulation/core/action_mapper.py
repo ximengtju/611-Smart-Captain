@@ -11,34 +11,29 @@ from dataclasses import dataclass
 import numpy as np
 
 
+CANONICAL_ACTION_LOW = np.array([-28.5, -20.0, -20.0, -10.0], dtype=np.float32)
+CANONICAL_ACTION_HIGH = np.array([28.5, 20.0, 20.0, 10.0], dtype=np.float32)
+
+
 @dataclass(frozen=True)
 class HoveringActionMapper:
     """Map canonical low-level actions to the 8-thruster HoloOcean command."""
 
     thruster_count: int = 8
+    command_limit: float = 28.5
 
     def to_command(self, action: np.ndarray) -> np.ndarray:
-        """Convert `[surge, sway, yaw, heave]` to thruster commands.
-
-        This preserves the mapping currently used in
-        `Main-Framework/env/pierharbor_hovering.py`.
-        """
-        surge, sway, yaw, heave = np.asarray(action, dtype=np.float32)
+        """Convert canonical `[surge, sway, heave, yaw]` actions to thruster commands."""
+        surge, sway, heave, yaw = np.asarray(action, dtype=np.float32)
 
         command = np.zeros(self.thruster_count, dtype=np.float32)
 
-        command[4:8] += surge
-        command[4] += sway
-        command[5] -= sway
-        command[6] += sway
-        command[7] -= sway
-
-        command[4] += yaw
-        command[5] -= yaw
-        command[6] -= yaw
-        command[7] += yaw
-
         command[0:4] = heave
+        command[4] = surge - sway + yaw
+        command[5] = surge + sway - yaw
+        command[6] = surge - sway - yaw
+        command[7] = surge + sway + yaw
+        command = np.clip(command, -self.command_limit, self.command_limit)
         return command
 
 

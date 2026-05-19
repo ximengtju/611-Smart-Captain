@@ -61,7 +61,10 @@ class RangeFinderGrid:
             sensor_return[self.sensor_key_by_angle_deg[angle]]
             for angle in self.vertical_angles_deg
         ])
-        self.intersection_distances = dist_matrix.astype(np.float32).flatten()
+        dist_matrix = dist_matrix.astype(np.float32)
+        dist_matrix = np.where(dist_matrix < 0, self.max_dist, dist_matrix)
+        dist_matrix = np.clip(dist_matrix, 0.0, self.max_dist)
+        self.intersection_distances = dist_matrix.flatten()
         return self.intersection_distances
 
     @property
@@ -74,6 +77,28 @@ class RangeFinderGrid:
         """Return block-reduced ray distances."""
         reduced = block_reduce(
             self.distance_matrix,
+            block_size=(self.blocksize_reduce, self.blocksize_reduce),
+            func=np.median,
+        )
+        return reduced.flatten()
+
+    @property
+    def alpha_reduced(self) -> np.ndarray:
+        """Return the vertical angles that correspond to reduced distances."""
+        alpha_2d = self.alpha.reshape((self.n_vertical, self.n_horizontal))
+        reduced = block_reduce(
+            alpha_2d,
+            block_size=(self.blocksize_reduce, self.blocksize_reduce),
+            func=np.median,
+        )
+        return reduced.flatten()
+
+    @property
+    def beta_reduced(self) -> np.ndarray:
+        """Return the horizontal angles that correspond to reduced distances."""
+        beta_2d = self.beta.reshape((self.n_vertical, self.n_horizontal))
+        reduced = block_reduce(
+            beta_2d,
             block_size=(self.blocksize_reduce, self.blocksize_reduce),
             func=np.median,
         )

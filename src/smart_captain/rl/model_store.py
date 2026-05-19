@@ -1,5 +1,5 @@
 """Model registration and path resolution for RL skills."""
-
+# 模型权重路径
 from __future__ import annotations
 
 import os
@@ -33,12 +33,13 @@ class ModelStore:
         "navigation": ModelSpec(
             skill="navigation",
             algorithm="sac",
-            relative_path="models/rl/navigation/sac/task1-v0_SAC_3/task1-v0_SAC_400000.zip",
+            #relative_path=r"F:\611-Smart-Captain-new-main\models\rl\navigation\sac\task1-v0_SAC_1\task1-v0_SAC_1500000.zip",
+            relative_path =r"F:\611-Smart-Captain-new-main\models\rl\navigation\sac\task1-v0_SAC_2\task1-v0_SAC_2000000.zip",
         ),
         "obstacle_avoidance": ModelSpec(
             skill="obstacle_avoidance",
             algorithm="sac",
-            relative_path="models/rl/obstacle_avoidance/sac/task2-v0_SAC_1/task2-v0_SAC_200000.zip",
+            relative_path="models/rl/obstacle_avoidance/sac/task4-v0_SAC_1/task4-v0_SAC_3200000.zip",
         ),
     })
 
