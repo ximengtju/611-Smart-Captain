@@ -31,7 +31,7 @@ class LegacyModeBridge:
     skill_to_mode: dict[str, int] = field(default_factory=lambda: {
         "navigation": 0,
         "obstacle_avoidance": 1,
-        "target_tracking": 1,
+        "target_tracking": 2,
         "search": 0,
         "mapping": 0,
     })
@@ -47,6 +47,11 @@ class LegacyModeBridge:
                 mode_index=1,
                 skill_name="obstacle_avoidance",
                 env_import_path="smart_captain.skills.obstacle_avoidance.env:ObstacleAvoidanceEnv",
+            ),
+            LegacyTaskBinding(
+                mode_index=2,
+                skill_name="target_tracking",
+                env_import_path="smart_captain.skills.target_tracking.env:TargetTrackingEnv",
             ),
         ],
         sync_state_on_switch=True,
