@@ -280,7 +280,7 @@ class BaseEnvironment(BaseSimulationAdapter, gym.Env):
         if self.external_goal is not None:
             self.goal_location = self.external_goal.copy()
         else:
-            self.goal_location = np.array([30, 0, 0], dtype=np.float32)
+            self.goal_location = np.array([0, 0, -50], dtype=np.float32)
         self.heading_goal_reached = 0.0
 
     def set_goal(self, goal) -> None:

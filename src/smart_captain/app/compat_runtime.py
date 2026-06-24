@@ -26,6 +26,8 @@ from smart_captain.orchestration.task_graph import TaskStatus
 from smart_captain.rl.agents import LegacyCompatibleAgents
 from smart_captain.simulation.defaults import DEFAULT_ENV_CONFIG
 
+from smart_captain.skills.target_tracking.policy import TargetTrackingPolicy
+
 @dataclass(frozen=True)
 # LegacyRuntimeConfig 是一个兼容旧运行链的配置对象
 # 把运行旧式多模型/多 mode 任务链需要的东西集中放在一起，比如模型路径、模型类型、任务指令、任务 ID、世界状态。
@@ -56,6 +58,36 @@ def build_legacy_plan(config: LegacyRuntimeConfig | None = None) -> LegacyExecut
         world_state=config.world_state,
     )
 
+#MPC新增兼容部分
+class MixedSkillAgents:
+    def __init__(self, rl_agents, extra_policies):
+        self.rl_agents = rl_agents
+        self.extra_policies = extra_policies
+        self.current_multi_mode_index = 0
+
+    def set_multi_mode_index(self, index: int) -> None:
+        self.current_multi_mode_index = index
+        if index not in self.extra_policies:
+            self.rl_agents.set_multi_mode_index(index)
+
+    def predict(self, obs, state=None, deterministic: bool = True):
+        if self.current_multi_mode_index in self.extra_policies:
+            return self.extra_policies[self.current_multi_mode_index].predict(
+                obs,
+                state=state,
+                deterministic=deterministic,
+            )
+        return self.rl_agents.predict(
+            obs,
+            state=state,
+            deterministic=deterministic,
+        )
+
+    @property
+    def active_skill(self):
+        return getattr(self.rl_agents, "active_skill", None)
+
+#MPC新增兼容部分结束
 
 def preview_legacy_plan(config: LegacyRuntimeConfig | None = None) -> dict[str, Any]:
     """Return a serializable summary without touching the simulator runtime."""
@@ -148,8 +180,12 @@ def _prepare_active_env_after_switch(active_env, skill: str, goal_override=None)
     active_env.delta_d_list = [active_env.delta_d]
     if hasattr(active_env, "episode_state"):
         active_env.episode_state.delta_d_history = active_env.delta_d_list
-
-    obs = active_env.observe()
+    #MPC兼容修改
+    if skill == "target_tracking" and hasattr(active_env, "build_tracking_observation"):
+        obs = active_env.build_tracking_observation()
+    else:
+        obs = active_env.observe()
+    #MPC兼容修改结束
     info = getattr(active_env, "info", {})
     return obs, info
 
@@ -186,12 +222,23 @@ def create_legacy_runtime(config: LegacyRuntimeConfig | None = None):
         show_viewport=True,
     )
     model_class_dict = {"sac": SAC, "a2c": A2C, "ppo": PPO}
-    agents = LegacyCompatibleAgents(
+    rl_agents = LegacyCompatibleAgents(         #变量名agents——>rl_agents
         model_paths=config.model_paths,
         model_types=config.model_types,
         model_class_dict=model_class_dict,
         mode="multi",
     )
+
+    #MPC兼容部分
+    agents = MixedSkillAgents(
+    rl_agents=rl_agents,
+    extra_policies={
+        2: TargetTrackingPolicy(),
+    },
+    )
+    #MPC兼容部分结束
+
+
     return auv, agents, plan
 
 
@@ -217,12 +264,22 @@ def create_adapter_backed_legacy_runtime(config: LegacyRuntimeConfig | None = No
     model_class_dict = {"sac": SAC, "a2c": A2C, "ppo": PPO}
 
     #加载两个 RL 模型
-    agents = LegacyCompatibleAgents(
+    rl_agents = LegacyCompatibleAgents(         #变量名agents——>rl_agents
         model_paths=config.model_paths,
         model_types=config.model_types,
         model_class_dict=model_class_dict,
         mode="multi",
     )
+
+    #MPC兼容部分
+    agents = MixedSkillAgents(
+    rl_agents=rl_agents,
+    extra_policies={
+        2: TargetTrackingPolicy(),
+    },
+    )
+    #MPC兼容部分结束
+
     return runtime.adapter, agents, plan
 
 

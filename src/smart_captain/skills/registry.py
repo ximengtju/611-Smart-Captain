@@ -10,22 +10,13 @@ from smart_captain.skills.navigation.config import NAVIGATION_SPEC
 from smart_captain.skills.obstacle_avoidance.config import OBSTACLE_AVOIDANCE_SPEC
 from smart_captain.skills.search.env import SearchEnv
 from smart_captain.skills.target_tracking.env import TargetTrackingEnv
-
+from smart_captain.skills.target_tracking.config import TARGET_TRACKING_SPEC
 
 SKILL_REGISTRY: dict[str, SkillSpec] = {
     NAVIGATION_SPEC.name: NAVIGATION_SPEC,
     OBSTACLE_AVOIDANCE_SPEC.name: OBSTACLE_AVOIDANCE_SPEC,
-    "target_tracking": SkillSpec(
-        name="target_tracking",
-        env_cls="smart_captain.skills.target_tracking.env:TargetTrackingEnv",
-        policy_cls="smart_captain.skills.target_tracking.policy:TargetTrackingPolicy",
-        default_scenario="pier_harbor",
-        observation_dim=37,
-        action_dim=4,
-        description="Placeholder target tracking skill.",
-        default_sensors=("dynamics", "velocity", "rangefinder"),
-        tags=("tracking",),
-    ),
+    TARGET_TRACKING_SPEC.name: TARGET_TRACKING_SPEC,
+    
     "search": SkillSpec(
         name="search",
         env_cls="smart_captain.skills.search.env:SearchEnv",
